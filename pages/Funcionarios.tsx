@@ -10,7 +10,8 @@ import {
   AlertCircle,
   X,
   Save,
-  UserPlus
+  UserPlus,
+  Lock
 } from 'lucide-react';
 
 const Funcionarios: React.FC = () => {
@@ -24,6 +25,7 @@ const Funcionarios: React.FC = () => {
   const [newEmployee, setNewEmployee] = useState({
     nome: '',
     login: '',
+    senha: '',
     perfil: 'funcionario' as 'admin' | 'funcionario',
     ativo: true
   });
@@ -58,24 +60,30 @@ const Funcionarios: React.FC = () => {
     setError(null);
 
     try {
-      const { data, error: insertError } = await supabase
+      // Mapeamos 'senha' para 'senha_hash' conforme a estrutura da tabela
+      const payload = {
+        nome: newEmployee.nome,
+        login: newEmployee.login,
+        senha_hash: newEmployee.senha, // Enviando para a coluna que causou o erro
+        perfil: newEmployee.perfil,
+        ativo: newEmployee.ativo,
+        criado_em: new Date().toISOString()
+      };
+
+      const { error: insertError } = await supabase
         .from('usuarios')
-        .insert([{
-          ...newEmployee,
-          criado_em: new Date().toISOString()
-        }])
-        .select();
+        .insert([payload]);
 
       if (insertError) throw insertError;
 
       // Sucesso
       setIsModalOpen(false);
-      setNewEmployee({ nome: '', login: '', perfil: 'funcionario', ativo: true });
-      fetchEmployees(); // Recarrega a lista
+      setNewEmployee({ nome: '', login: '', senha: '', perfil: 'funcionario', ativo: true });
+      fetchEmployees(); 
       alert('Funcionário cadastrado com sucesso!');
     } catch (err: any) {
       console.error('Erro ao cadastrar:', err);
-      setError('Falha ao cadastrar no Supabase: ' + err.message);
+      setError('Falha ao cadastrar no Supabase: ' + (err.message || 'Erro desconhecido'));
     } finally {
       setIsSaving(false);
     }
@@ -106,7 +114,7 @@ const Funcionarios: React.FC = () => {
         <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl flex items-start gap-3 text-rose-800">
           <AlertCircle className="shrink-0 mt-0.5" size={18} />
           <div>
-            <p className="font-bold text-sm">Erro</p>
+            <p className="font-bold text-sm">Erro de Cadastro</p>
             <p className="text-xs opacity-90">{error}</p>
           </div>
         </div>
@@ -151,6 +159,21 @@ const Funcionarios: React.FC = () => {
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                   placeholder="joao@empresa.com"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                  <Lock size={14} className="text-slate-400" /> Senha Inicial
+                </label>
+                <input 
+                  type="password" 
+                  required
+                  value={newEmployee.senha}
+                  onChange={e => setNewEmployee({...newEmployee, senha: e.target.value})}
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                  placeholder="••••••••"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Este valor será salvo na coluna 'senha_hash'.</p>
               </div>
 
               <div>
