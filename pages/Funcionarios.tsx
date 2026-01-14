@@ -5,13 +5,12 @@ import { User } from '../types';
 import { 
   Plus, 
   Search, 
-  Filter, 
   MoreVertical, 
-  Mail, 
-  Shield, 
-  Ban, 
   RefreshCcw,
-  AlertCircle
+  AlertCircle,
+  X,
+  Save,
+  UserPlus
 } from 'lucide-react';
 
 const Funcionarios: React.FC = () => {
@@ -19,6 +18,16 @@ const Funcionarios: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
+  
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newEmployee, setNewEmployee] = useState({
+    nome: '',
+    login: '',
+    perfil: 'funcionario' as 'admin' | 'funcionario',
+    ativo: true
+  });
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     fetchEmployees();
@@ -37,9 +46,38 @@ const Funcionarios: React.FC = () => {
       setEmployees(data || []);
     } catch (err: any) {
       console.error('Erro ao buscar funcionários:', err);
-      setError('Não foi possível carregar a lista. Verifique as permissões de RLS no Supabase.');
+      setError('Erro ao carregar lista. Verifique a conexão.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const { data, error: insertError } = await supabase
+        .from('usuarios')
+        .insert([{
+          ...newEmployee,
+          criado_em: new Date().toISOString()
+        }])
+        .select();
+
+      if (insertError) throw insertError;
+
+      // Sucesso
+      setIsModalOpen(false);
+      setNewEmployee({ nome: '', login: '', perfil: 'funcionario', ativo: true });
+      fetchEmployees(); // Recarrega a lista
+      alert('Funcionário cadastrado com sucesso!');
+    } catch (err: any) {
+      console.error('Erro ao cadastrar:', err);
+      setError('Falha ao cadastrar no Supabase: ' + err.message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -53,9 +91,10 @@ const Funcionarios: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Colaboradores</h2>
-          <p className="text-slate-500">Gestão de acesso e perfis ativos.</p>
+          <p className="text-slate-500">Gestão de acesso e perfis do sistema.</p>
         </div>
         <button 
+          onClick={() => setIsModalOpen(true)}
           className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
         >
           <Plus size={20} />
@@ -64,11 +103,85 @@ const Funcionarios: React.FC = () => {
       </div>
 
       {error && (
-        <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3 text-amber-800">
+        <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl flex items-start gap-3 text-rose-800">
           <AlertCircle className="shrink-0 mt-0.5" size={18} />
           <div>
-            <p className="font-bold text-sm">Aviso de Banco de Dados</p>
+            <p className="font-bold text-sm">Erro</p>
             <p className="text-xs opacity-90">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Novo Funcionário */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-indigo-50/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
+                  <UserPlus size={20} />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800">Cadastrar Colaborador</h3>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleCreateEmployee} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Nome Completo</label>
+                <input 
+                  type="text" 
+                  required
+                  value={newEmployee.nome}
+                  onChange={e => setNewEmployee({...newEmployee, nome: e.target.value})}
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                  placeholder="Ex: João da Silva"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Login / E-mail</label>
+                <input 
+                  type="email" 
+                  required
+                  value={newEmployee.login}
+                  onChange={e => setNewEmployee({...newEmployee, login: e.target.value})}
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                  placeholder="joao@empresa.com"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Perfil de Acesso</label>
+                <select 
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                  value={newEmployee.perfil}
+                  onChange={e => setNewEmployee({...newEmployee, perfil: e.target.value as any})}
+                >
+                  <option value="funcionario">Funcionário Comum</option>
+                  <option value="admin">Administrador</option>
+                </select>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  disabled={isSaving}
+                  className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isSaving ? 'Salvando...' : <><Save size={18} /> Salvar</>}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

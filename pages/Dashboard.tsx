@@ -8,7 +8,7 @@ import {
   TrendingDown, 
   AlertCircle 
 } from 'lucide-react';
-import { callEdgeFunction } from '../services/supabase';
+import { supabase } from '../services/supabase';
 import { DashboardData } from '../types';
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
@@ -37,36 +37,58 @@ const StatCard: React.FC<{
 );
 
 const Dashboard: React.FC = () => {
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [metrics, setMetrics] = useState<DashboardData>({
+    totalFuncionarios: 0,
+    pontosHoje: 0,
+    ausentesHoje: 0,
+    horasExtrasMes: 0,
+    horasNegativasMes: 0,
+    solicitacoesPendentes: 0
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchDashboard = async () => {
-      setLoading(true);
-      try {
-        const { data: edgeData, error } = await callEdgeFunction<DashboardData>('get-dashboard-data');
-        
-        if (error || !edgeData) {
-          // Fallback robusto para demonstração
-          setData({
-            totalFuncionarios: 124,
-            pontosHoje: 118,
-            ausentesHoje: 6,
-            horasExtrasMes: 342,
-            horasNegativasMes: 54,
-            solicitacoesPendentes: 12
-          });
-        } else {
-          setData(edgeData);
-        }
-      } catch (e) {
-        console.warn('Falha na chamada da Edge Function. Usando mock.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchDashboard();
+    fetchRealMetrics();
   }, []);
+
+  const fetchRealMetrics = async () => {
+    setLoading(true);
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // 1. Total de Funcionários Ativos
+      const { count: totalUsers } = await supabase
+        .from('usuarios')
+        .select('*', { count: 'exact', head: true })
+        .eq('ativo', true);
+
+      // 2. Pontos batidos hoje
+      const { count: pointsToday } = await supabase
+        .from('pontos')
+        .select('*', { count: 'exact', head: true })
+        .gte('data_hora', today.toISOString());
+
+      // 3. Solicitações Pendentes
+      const { count: pendingRequests } = await supabase
+        .from('solicitacoes')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pendente');
+
+      setMetrics({
+        totalFuncionarios: totalUsers || 0,
+        pontosHoje: pointsToday || 0,
+        ausentesHoje: Math.max(0, (totalUsers || 0) - (pointsToday || 0)),
+        horasExtrasMes: 12, // Exemplo simulado pois depende de cálculo complexo de interval
+        horasNegativasMes: 5,
+        solicitacoesPendentes: pendingRequests || 0
+      });
+    } catch (error) {
+      console.error('Erro ao carregar métricas:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (loading) return (
     <div className="animate-pulse space-y-8">
@@ -78,29 +100,28 @@ const Dashboard: React.FC = () => {
   );
 
   const chartData = [
-    { name: 'Seg', horas: 840 }, { name: 'Ter', horas: 860 },
-    { name: 'Qua', horas: 830 }, { name: 'Qui', horas: 880 },
-    { name: 'Sex', horas: 810 }, { name: 'Sáb', horas: 120 },
+    { name: 'Seg', horas: 84 }, { name: 'Ter', horas: 86 },
+    { name: 'Qua', horas: 83 }, { name: 'Qui', horas: 88 },
+    { name: 'Sex', horas: 81 }, { name: 'Sáb', horas: 12 },
     { name: 'Dom', horas: 0 },
   ];
 
   return (
     <div className="space-y-8">
-      {/* Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-        <StatCard title="Colaboradores" value={data?.totalFuncionarios || 0} icon={<Users size={24} className="text-indigo-600" />} color="bg-indigo-50" />
-        <StatCard title="Presentes" value={data?.pontosHoje || 0} icon={<CheckCircle2 size={24} className="text-emerald-600" />} color="bg-emerald-50" trend="95%" trendUp />
-        <StatCard title="Ausentes" value={data?.ausentesHoje || 0} icon={<AlertCircle size={24} className="text-amber-600" />} color="bg-amber-50" />
-        <StatCard title="Extras" value={`${data?.horasExtrasMes || 0}h`} icon={<TrendingUp size={24} className="text-indigo-600" />} color="bg-indigo-50" />
-        <StatCard title="Negativas" value={`${data?.horasNegativasMes || 0}h`} icon={<TrendingDown size={24} className="text-rose-600" />} color="bg-rose-50" />
-        <StatCard title="Pendências" value={data?.solicitacoesPendentes || 0} icon={<Clock size={24} className="text-indigo-600" />} color="bg-indigo-50" />
+        <StatCard title="Colaboradores" value={metrics.totalFuncionarios} icon={<Users size={24} className="text-indigo-600" />} color="bg-indigo-50" />
+        <StatCard title="Presença Hoje" value={metrics.pontosHoje} icon={<CheckCircle2 size={24} className="text-emerald-600" />} color="bg-emerald-50" trend="Real-time" trendUp />
+        <StatCard title="Ausentes" value={metrics.ausentesHoje} icon={<AlertCircle size={24} className="text-amber-600" />} color="bg-amber-50" />
+        <StatCard title="Solicitações" value={metrics.solicitacoesPendentes} icon={<Clock size={24} className="text-indigo-600" />} color="bg-indigo-50" />
+        <StatCard title="Extras (Mês)" value={`${metrics.horasExtrasMes}h`} icon={<TrendingUp size={24} className="text-indigo-600" />} color="bg-indigo-50" />
+        <StatCard title="Débitos (Mês)" value={`${metrics.horasNegativasMes}h`} icon={<TrendingDown size={24} className="text-rose-600" />} color="bg-rose-50" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm min-w-0">
-          <h3 className="text-lg font-bold text-slate-800 mb-8">Volume de Trabalho Semanal</h3>
-          <div className="h-[300px] w-full" style={{ minHeight: '300px' }}>
-            <ResponsiveContainer width="100%" height="100%">
+          <h3 className="text-lg font-bold text-slate-800 mb-8">Volume de Registros Semanal</h3>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={300}>
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorHoras" x1="0" y1="0" x2="0" y2="1">
@@ -121,11 +142,13 @@ const Dashboard: React.FC = () => {
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <h3 className="text-lg font-bold text-slate-800 mb-6">Status da Equipe</h3>
           <div className="space-y-6">
-            <StatusItem label="Presentes" count={118} color="bg-emerald-500" subtext="Em jornada" />
-            <StatusItem label="Pausa" count={42} color="bg-indigo-500" subtext="Intervalo" />
-            <StatusItem label="Atestados" count={4} color="bg-amber-500" subtext="Justificado" />
-            <StatusItem label="Ausentes" count={2} color="bg-rose-500" subtext="Sem registro" />
+            <StatusItem label="Em Atividade" count={metrics.pontosHoje} color="bg-emerald-500" subtext="Registros hoje" />
+            <StatusItem label="Pendentes" count={metrics.solicitacoesPendentes} color="bg-amber-500" subtext="Aguardando aprovação" />
+            <StatusItem label="Total Base" count={metrics.totalFuncionarios} color="bg-indigo-500" subtext="Funcionários ativos" />
           </div>
+          <button onClick={fetchRealMetrics} className="w-full mt-10 py-3 bg-slate-50 border border-slate-200 text-slate-600 font-semibold rounded-xl hover:bg-indigo-50 hover:text-indigo-600 transition-all text-sm">
+            Atualizar Dados
+          </button>
         </div>
       </div>
     </div>
