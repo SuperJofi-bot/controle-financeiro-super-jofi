@@ -64,46 +64,31 @@ const Funcionarios: React.FC = () => {
 
     try {
       /**
-       * IMPORTANTE: Para criar usuários no 'Authentication', usamos uma Edge Function.
-       * A Edge Function usa a SERVICE_ROLE_KEY no servidor para ignorar restrições de cliente.
+       * Chamada para a Edge Function 'create-user'.
+       * O payload foi corrigido de 'email' para 'login' para coincidir com o que a função espera.
        */
       const { data, error: funcError } = await callEdgeFunction<any>('create-user', {
         nome: newEmployee.nome,
-        email: newEmployee.login,
+        login: newEmployee.login, // Chave corrigida
         password: newEmployee.senha,
         perfil: newEmployee.perfil,
         ativo: newEmployee.ativo
       });
 
       if (funcError) {
-        // Fallback: Se a Edge Function não estiver implantada, tentamos o insert direto 
-        // mas avisamos que o Auth precisa da função.
-        console.warn('Edge Function não encontrada ou erro. Tentando insert direto na tabela...');
-        
-        const { error: insertError } = await supabase
-          .from('usuarios')
-          .insert([{
-            nome: newEmployee.nome,
-            login: newEmployee.login,
-            senha_hash: newEmployee.senha,
-            perfil: newEmployee.perfil,
-            ativo: newEmployee.ativo,
-            criado_em: new Date().toISOString()
-          }]);
-
-        if (insertError) throw insertError;
-        
-        setError('Atenção: Funcionário salvo no banco, mas requer Edge Function para criar acesso no Authentication.');
-      } else {
-        setSuccess(true);
-        setTimeout(() => setIsModalOpen(false), 2000);
+        // Se houver erro na função, lançamos a exceção para não criar um usuário "zumbi" apenas na tabela
+        throw new Error(funcError.message || 'Erro ao criar usuário no Authentication. Verifique se a Edge Function está implantada corretamente.');
       }
 
+      // Sucesso total (Auth + DB via Edge Function)
+      setSuccess(true);
       setNewEmployee({ nome: '', login: '', senha: '', perfil: 'funcionario', ativo: true });
       fetchEmployees(); 
+      setTimeout(() => setIsModalOpen(false), 2000);
+      
     } catch (err: any) {
-      console.error('Erro no processo:', err);
-      setError('Falha crítica: ' + (err.message || 'Verifique se a Edge Function create-user está ativa.'));
+      console.error('Erro no processo de cadastro:', err);
+      setError('Falha crítica: ' + (err.message || 'Verifique se a Edge Function create-user está ativa e configurada.'));
     } finally {
       setIsSaving(false);
     }
@@ -138,7 +123,7 @@ const Funcionarios: React.FC = () => {
         <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl flex items-start gap-3 text-rose-800">
           <AlertCircle className="shrink-0 mt-0.5" size={18} />
           <div className="text-xs">
-            <p className="font-bold mb-1">Nota sobre o Cadastro</p>
+            <p className="font-bold mb-1">Erro no Cadastro</p>
             <p className="opacity-90">{error}</p>
           </div>
         </div>
@@ -166,7 +151,7 @@ const Funcionarios: React.FC = () => {
                   <CheckCircle2 size={32} />
                 </div>
                 <h4 className="text-xl font-bold text-slate-800">Cadastrado com Sucesso!</h4>
-                <p className="text-slate-500">O usuário já pode acessar o sistema com seu e-mail e senha.</p>
+                <p className="text-slate-500">O acesso foi criado corretamente no Authentication e no Banco de Dados.</p>
               </div>
             ) : (
               <form onSubmit={handleCreateEmployee} className="p-6 space-y-4">
